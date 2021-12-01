@@ -2,7 +2,7 @@ function [Y,U,t_total,t_update] = forwardIntegrate()
 % [Y,U,t_total,t_update] = forwardIntegrate
 % 
 % This script returns the vehicle trajectory with control input being
-% generated via the control input generation function:
+% generated via the control input generation function:f
 %         ROB535_ControlProject_part2_Team<your team number>
 % Obstacles are randomly generated along the test track. Notice that the
 % vehicle can only sense (observe) the obstacles within 150m, therefore
