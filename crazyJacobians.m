@@ -1,18 +1,18 @@
 clear
 load_constants
 
-num_decision_var = 50;
+num_itrs = 25;
 
 
-X = sym('x', [1 num_decision_var],'real');
-U = sym('u', [1 num_decision_var],'real');
-Y = sym('y', [1 num_decision_var],'real');
-V = sym('v', [1 num_decision_var],'real');
-H = sym('h', [1 num_decision_var],'real');
-R = sym('r', [1 num_decision_var],'real');
+X = sym('x', [1 num_itrs],'real');
+U = sym('u', [1 num_itrs],'real');
+Y = sym('y', [1 num_itrs],'real');
+V = sym('v', [1 num_itrs],'real');
+H = sym('h', [1 num_itrs],'real');
+R = sym('r', [1 num_itrs],'real');
 
-Delta = sym('delta', [1 num_decision_var-1]);
-Fx = sym('Fx', [1 num_decision_var-1]);
+Delta = sym('delta', [1 num_itrs-1]);
+Fx = sym('Fx', [1 num_itrs-1]);
 
 Z1 = reshape([X;U;Y;V;H;R], [], 1);
 Z2 = reshape([Delta;Fx], [], 1);
@@ -22,7 +22,7 @@ Z = [Z1;Z2];
 %% calculating dg explicitly 
 idx = 1;
 % g = [];
-for i = 1:2:2*num_decision_var
+for i = 1:2:2*num_itrs
     g_(i) = X(idx)*cos(-H(idx))-Y(idx)*sin(-H(idx));
     g_(i+1) = -(X(idx)*cos(-H(idx))-Y(idx)*sin(-H(idx)));
     idx = idx+1;
@@ -35,15 +35,15 @@ dg = jacobian(g_, Z);
 h = [X(1) U(1) Y(1) V(1) H(1) R(1)]';
 
 idx = 2;
-for i = 7:6:6*num_decision_var
+for i = 7:6:6*num_itrs
 
     %generate input functions
     delta_f=Delta(idx-1);
     F_x=Fx(idx-1);
 
     %slip angle functions in degrees
-    a_f=rad2deg(delta_f-atan(V(idx-1)+a*R(idx-1)/U(idx-1)));
-    a_r=rad2deg(-atan((V(idx-1)-b*R(idx-1))/U(idx-1)));
+    a_f=rad2deg(delta_f-atan2(V(idx-1)+a*R(idx-1), U(idx-1)));
+    a_r=rad2deg(-atan2((V(idx-1)-b*R(idx-1)), U(idx-1)));
 
     %Nonlinear Tire Dynamics
     phi_yf=(1-Ey)*(a_f+Shy)+(Ey/By)*atan(By*(a_f+Shy));
