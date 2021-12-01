@@ -1,17 +1,18 @@
 clear
 load_constants
 
+num_decision_var = 50;
 
 
-X = sym('x', [1 121],'real');
-U = sym('u', [1 121],'real');
-Y = sym('y', [1 121],'real');
-V = sym('v', [1 121],'real');
-H = sym('h', [1 121],'real');
-R = sym('r', [1 121],'real');
+X = sym('x', [1 num_decision_var],'real');
+U = sym('u', [1 num_decision_var],'real');
+Y = sym('y', [1 num_decision_var],'real');
+V = sym('v', [1 num_decision_var],'real');
+H = sym('h', [1 num_decision_var],'real');
+R = sym('r', [1 num_decision_var],'real');
 
-Delta = sym('delta', [1 120]);
-Fx = sym('Fx', [1 120]);
+Delta = sym('delta', [1 num_decision_var-1]);
+Fx = sym('Fx', [1 num_decision_var-1]);
 
 Z1 = reshape([X;U;Y;V;H;R], [], 1);
 Z2 = reshape([Delta;Fx], [], 1);
@@ -21,20 +22,20 @@ Z = [Z1;Z2];
 %% calculating dg explicitly 
 idx = 1;
 % g = [];
-for i = 1:2:242
-    g(i) = X(idx)*cos(-H(idx))-Y(idx)*sin(-H(idx));
-    g(i+1) = -(X(idx)*cos(-H(idx))-Y(idx)*sin(-H(idx)));
+for i = 1:2:2*num_decision_var
+    g_(i) = X(idx)*cos(-H(idx))-Y(idx)*sin(-H(idx));
+    g_(i+1) = -(X(idx)*cos(-H(idx))-Y(idx)*sin(-H(idx)));
     idx = idx+1;
 end
     
-dg = jacobian(g, Z);
+dg = jacobian(g_, Z);
 
 
 %% calculating dh explicitly 
 h = [X(1) U(1) Y(1) V(1) H(1) R(1)]';
 
 idx = 2;
-for i = 7:6:726
+for i = 7:6:6*num_decision_var
 
     %generate input functions
     delta_f=Delta(idx-1);
@@ -73,5 +74,4 @@ for i = 7:6:726
     idx = idx+1;
 end
 
-dh = jacobian(h, Z);
-dh = vpa(dh, 3);
+dh = vpa(jacobian(h, Z),3);

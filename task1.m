@@ -1,11 +1,13 @@
 clear
 
 load_constants
+load dh_fun.mat
 load TestTrack
 
 interp_const = 5;
 [Xmin, Xmax] = get_bounds(TestTrack, interp_const);
-a = 1
+
+
 
 %% define model equations
 
@@ -99,51 +101,11 @@ function [g,h,dg,dh]=nonlcon(z, ub, lb)
     end
     
    %% obtain dh
-
-    dh(1:3, 1:3) = eye(3);
-    u_idx = 1;
-    x_idx = 1;
-    for i = 4:3:363
-        dh(x_idx:x_idx+5, i) = [-1;
-                                   0;
-                                   0.05*(u(u_idx)*sin(x(x_idx+2))+b/L*u(u_idx)*tan(u(u_idx+1))*cos(x(x_idx+2)));
-                                   1;
-                                   0;
-                                   0];
-                               
-        dh((u_idx)+363:(u_idx+1)+363, i) = [-0.05*(cos(x(x_idx+2))-b/L*tan(u(u_idx+1))*sin(x(x_idx+2)));
-                                            -0.05*(-b/L*u(u_idx)*sec(u(u_idx+1))^2*sin(x(x_idx+2)))];
-                                         
-                                         
-        dh(x_idx:x_idx+5, i+1) = [0;
-                                   -1;
-                                   -0.05*(u(u_idx)*cos(x(x_idx+2))-b/L*u(u_idx)*tan(u(u_idx+1))*sin(x(x_idx+2)));
-                                    0;
-                                    1
-                                    0];
-                               
-        dh((u_idx)+363:(u_idx+1)+363, i+1) = [-0.05*(sin(x(x_idx+2))+b/L*tan(u(u_idx+1))*cos(x(x_idx+2)));
-                                              -0.05*(b/L*u(u_idx)*sec(u(u_idx+1))^2*cos(x(x_idx+2)))];
-                                         
-        
-        dh(x_idx:x_idx+5, i+2) = [0;
-                                    0;
-                                   -1;
-                                    0;
-                                    0;
-                                    1];
-                               
-        dh((u_idx)+363:(u_idx+1)+363, i+2) = [-0.05/L*tan(u(u_idx+1));
-                                             -0.05/L*u(u_idx)*sec(u(u_idx+1))^2];
-                                         
-                 
-                               
-       x_idx = x_idx+3;
-       u_idx = u_idx+2;
-    end
+    
+    dh = dh_fun(z);
     
     % size of g must be 121 x 1 (no.of time steps);
-    % size of dg must be 603 x 121 = Transpose(no. of time steps x no. of elements in 'z');
+    % size of dg must be 603 x 121_fun = Transpose(no. of time steps x no. of elements in 'z');
     % size of h must be 363  1 ((no. of time steps * no. of states) x 1)
     % size of dh must be 603 x 363 = Transpose((no. of time steps * no. of states) x no. of elements in 'z') ;
 end
