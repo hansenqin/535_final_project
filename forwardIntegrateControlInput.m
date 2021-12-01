@@ -42,7 +42,7 @@ function [Y,T]=forwardIntegrateControlInput(U,x0)
     else
         %Solve for trajectory
         options = odeset('MaxStep',0.01);
-        [~,Y]=ode45(@(t,x)bike(t,x,T,U),T,x0,options);
+        [~,Y]=ode15s(@(t,x)bike(t,x,T,U),T,x0,options);
         
         % in case U is a 2x2 vector, meaning T would be a 1x2 vector [t0 tf],
         % ode45 would provide the solution at its own integration timesteps

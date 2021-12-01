@@ -4,6 +4,7 @@ clear
 load_constants
 load dh_fun.mat
 load TestTrack
+global num_itrs
 
 options = optimoptions('fmincon', 'SpecifyConstraintGradient', true, ...
                         'SpecifyObjectiveGradient', true);
@@ -14,23 +15,26 @@ interp_const = 5;
 
 
 num_itrs = 25;
-ub = [repmat([1000; 1000; 1000; 1000; 1000; 1000], num_itrs, 1);repmat([0.5; 5000], (num_itrs-1), 1)];
-lb = [repmat([-1000; -1000; -1000; -1000; -1000; -1000], num_itrs, 1);repmat([-0.5; -5000], (num_itrs-1), 1)];
+ub = [repmat([1000; 1000; 1000; 1000; 1000; 1000], num_itrs, 1);repmat([0.005; 5000], (num_itrs-1), 1)];
+lb = [repmat([-1000; -1000; -1000; -1000; -1000; -1000], num_itrs, 1);repmat([-0.005; -5000], (num_itrs-1), 1)];
 
 
 %% main loop
-x0 = rand(1,6*num_itrs+2*(num_itrs-1));
-x0(1,1:6) = [287,5,-176,0,2,0];
+x0 = zeros(1,6*num_itrs+2*(num_itrs-1));
+x0_ = [287,5,-176,0,2,0];
+x0(1,1:6*num_itrs) = repmat(x0_, 1,num_itrs);
+x0(1,6*num_itrs+1:end) = rand(1,2*(num_itrs-1));
+% x0(1,1:6) = [287,5,-176,0,2,0];
 for i = 1:length(goals.center)
     curr_goal_x = goals.center(1, i);
     curr_goal_y = goals.center(2, i);
     curr_goal_h = goals.heading(i);
     
     cf = @(z) costfun(z, curr_goal_x, curr_goal_y, curr_goal_h);
-    nc = @(z) nonlcon(z, Xmin(i), Xmax(i), dhf);
+    nc = @(z) nonlcon(z, Xmin(i), Xmax(i), dhf, x0_);
     z = fmincon(cf, x0, [], [], [], [], lb' ,ub' ,nc, options);
     Y0 = reshape(z(1:6*num_itrs), 6, num_itrs)';
-    U = reshape(z(6:num_itrs:end),2,num_itrs-1);
+    U = reshape(z(6*num_itrs+1:end),2,num_itrs-1);
     x0 = Y0(end,:);
 end
 
@@ -79,8 +83,8 @@ function [Xmin, Xmax, goals] = get_track_bounds_and_goals(TestTrack, interp_cons
 end
 
 
-function [g,h,dg,dh]=nonlcon(z, ub_track, lb_track, dh_fun)
-    num_itrs = 25;
+function [g,h, dg, dh]=nonlcon(z, lb_track, ub_track, dh_fun, x0)
+    global num_itrs
 
 
     states = z(1:6*num_itrs);
@@ -105,7 +109,7 @@ function [g,h,dg,dh]=nonlcon(z, ub_track, lb_track, dh_fun)
     idx = 1;
     for i = 1:2:2*num_itrs
         g(i) = x(idx)*cos(-phi(idx))-y(idx)*sin(-phi(idx))-ub_track;
-        g(i+1) = -(x(idx)*cos(-phi(idx))-y(idx)*sin(-phi(idx)))-lb_track;
+        g(i+1) = -(x(idx)*cos(-phi(idx))-y(idx)*sin(-phi(idx)))+lb_track;
         idx = idx+1;
     end
  
@@ -126,31 +130,32 @@ function [g,h,dg,dh]=nonlcon(z, ub_track, lb_track, dh_fun)
         dx(row_idx, 1) = bike([x(i) u(i) y(i) v(i) phi(i) r(i)], [delta(i), Fx(i)]);
     end
     
-    %% obtain h
-    h(1:6,1) = [x(1); u(1); y(1); v(1); phi(1); r(1)];
+    %% obtain equality constraint h
+    h(1:6,1) = [x(1)-x0(1); u(1)-x0(2); y(1)-x0(3); v(1)-x0(4); phi(1)-x0(5); r(1)-x0(6)];
     for i=2:num_itrs
-        h((i-1)*6+1:(i-1)*6+6, 1) = [x(i) - x(i-1) - 0.01*dx((i-2)*6+1);
-                                     u(i) - u(i-1) - 0.01*dx((i-2)*6+2);
-                                     y(i) - y(i-1) - 0.01*dx((i-2)*6+3);
-                                     v(i) - v(i-1) - 0.01*dx((i-2)*6+4);
-                                     phi(i) - phi(i-1) - 0.01*dx((i-2)*6+5);
-                                     r(i) - r(i-1) - 0.01*dx((i-2)*6+6)];
+        h((i-1)*6+1:(i-1)*6+6, 1) = [x(i) - x(i-1) - 0.02*dx((i-2)*6+1);
+                                     u(i) - u(i-1) - 0.02*dx((i-2)*6+2);
+                                     y(i) - y(i-1) - 0.02*dx((i-2)*6+3);
+                                     v(i) - v(i-1) - 0.02*dx((i-2)*6+4);
+                                     phi(i) - phi(i-1) - 0.02*dx((i-2)*6+5);
+                                     r(i) - r(i-1) - 0.02*dx((i-2)*6+6)];
     end
     
    %% obtain dh
     
     dh = dh_fun(z);
 
-     dg = dg';
-     dh = dh';
+    dg = dg';
+    dh = dh';
+
 end
 
 function [J, dJ] = costfun(z, goal_x, goal_y, goal_h)
 
-    num_itrs = 25;
+    global num_itrs
     
     states = z(1:6*num_itrs);
-    inputs = z(1:6*num_itrs+1:end);
+    inputs = z(6*num_itrs+1:end);
     
     
     
@@ -166,10 +171,17 @@ function [J, dJ] = costfun(z, goal_x, goal_y, goal_h)
     
     
     
-    J = 0;
+    J1 = 0;
     for i=1:length(x)
-        J = J + (x(i)-goal_x)^2 + (y(i)-goal_y)^2 + (phi(i)-goal_h)^2;
+        J1 = J1 + (x(i)-goal_x)^2 + (y(i)-goal_y)^2 + (phi(i)-goal_h)^2 + v(i)^2;
     end
+    
+    J2 = 0;
+    for i=1:length(delta)
+        J2 = J2 + (delta(i))^2 + (Fx(i))^2;
+    end
+    
+    J = J1+J2;
     
     
     idx = 1;
@@ -177,19 +189,28 @@ function [J, dJ] = costfun(z, goal_x, goal_y, goal_h)
         dJ(i) = 2*(x(idx)-goal_x);
         dJ(i+1) = 0;
         dJ(i+2) = 2*(y(idx)-goal_y);
-        dJ(i+3) = 0;
+        dJ(i+3) = 2*v(idx);
         dJ(i+4) = 2*(phi(idx)-goal_h);
         dJ(i+5) = 0;
         idx = idx+1;
     end
-
-    dJ = [dJ zeros(1, 98)];
+    
+    idx = 1;
+    for i=num_itrs*6+1:2:num_itrs*6+2*(num_itrs-1)
+        dJ(i) = 2*delta(idx);
+        dJ(i+1) = 2*Fx(idx);
+        idx = idx+1;
+    end
+    
+    dJ = dJ';
+% 
+%     dJ = [dJ zeros(1, 2*(num_itrs-1))];
 
     
 end
 
 
-function dzdt=bike(x,U)
+function dzdt=bike(X,U)
 %constants
 Nw=2;
 f=0.01;
@@ -206,13 +227,21 @@ m=1400;
 g=9.806;
 
 
+x = X(1);
+u = X(2);
+y = X(3);
+v = X(4);
+h = X(5);
+r = X(6);
+
+
 %generate input functions
 delta_f=U(1);
 F_x=U(2);
 
 %slip angle functions in degrees
-a_f=rad2deg(delta_f-atan2(x(4)+a*x(6),x(2)));
-a_r=rad2deg(-atan2((x(4)-b*x(6)),x(2)));
+a_f=rad2deg(delta_f-atan2(v+a*r,u));
+a_r=rad2deg(-atan2((v-b*r),u));
 
 %Nonlinear Tire Dynamics
 phi_yf=(1-Ey)*(a_f+Shy)+(Ey/By)*atan(By*(a_f+Shy));
@@ -235,11 +264,11 @@ if F_total>F_max
 end
 
 %vehicle dynamics
-dzdt= [x(2)*cos(x(5))-x(4)*sin(x(5));...
-          (-f*m*g+Nw*F_x-F_yf*sin(delta_f))/m+x(4)*x(6);...
-          x(2)*sin(x(5))+x(4)*cos(x(5));...
-          (F_yf*cos(delta_f)+F_yr)/m-x(2)*x(6);...
-          x(6);...
+dzdt= [u*cos(h)-v*sin(h);...
+          (-f*m*g+Nw*F_x-F_yf*sin(delta_f))/m+v*r;...
+          u*sin(h)+v*cos(h);...
+          (F_yf*cos(delta_f)+F_yr)/m-u*r;...
+          r;...
           (F_yf*a*cos(delta_f)-F_yr*b)/Iz];
 end
 

@@ -65,12 +65,12 @@ for i = 7:6:6*num_itrs
     H_dot = R(idx-1);
     R_dot = (F_yf*a*cos(delta_f)-F_yr*b)/Iz;
     
-    h(i) = X(idx) - X(idx-1) - X_dot;
-    h(i+1) = U(idx) - U(idx-1) - U_dot;
-    h(i+2) = Y(idx) - Y(idx-1) - Y_dot;
-    h(i+3) = V(idx) - V(idx-1) - V_dot;
-    h(i+4) = H(idx) - H(idx-1) - H_dot;
-    h(i+5) = R(idx) - R(idx-1) - R_dot;
+    h(i) = X(idx) - X(idx-1) - X_dot*0.02;
+    h(i+1) = U(idx) - U(idx-1) - U_dot*0.02;
+    h(i+2) = Y(idx) - Y(idx-1) - Y_dot*0.02;
+    h(i+3) = V(idx) - V(idx-1) - V_dot*0.02;
+    h(i+4) = H(idx) - H(idx-1) - H_dot*0.02;
+    h(i+5) = R(idx) - R(idx-1) - R_dot*0.02;
     idx = idx+1;
 end
 
