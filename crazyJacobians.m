@@ -38,7 +38,7 @@ idx = 2;
 for i = 7:6:6*num_itrs
 
     %generate input functions
-    delta_f=Delta(idx-1);
+    delta_=Delta(idx-1);
     F_x=Fx(idx-1);
 
     %slip angle functions in degrees
@@ -75,3 +75,48 @@ for i = 7:6:6*num_itrs
 end
 
 dh = vpa(jacobian(h, Z),3);
+
+
+
+
+%% calculate jacobian of state equations
+
+    
+    x_ = sym('x_', 'real');
+    u_ = sym('u_', 'real');
+    y_ = sym('y_', 'real');
+    v_ = sym('v_', 'real');
+    h_ = sym('h_', 'real');
+    r_ = sym('r_', 'real');
+    delta_ = sym('delta_', 'real');
+    Fx_ = sym('Fx_', 'real');
+
+    %slip angle functions in degrees
+    a_f=rad2deg(delta_-atan2(v_+a*r_, u_));
+    a_r=rad2deg(-atan2((v_-b*r_), u_));
+
+    %Nonlinear Tire Dynamics
+    phi_yf=(1-Ey)*(a_f+Shy)+(Ey/By)*atan(By*(a_f+Shy));
+    phi_yr=(1-Ey)*(a_r+Shy)+(Ey/By)*atan(By*(a_r+Shy));
+
+    F_zf=b/(a+b)*m*g;
+    F_yf=F_zf*Dy*sin(Cy*atan(By*phi_yf))+Svy;
+
+    F_zr=a/(a+b)*m*g;
+    F_yr=F_zr*Dy*sin(Cy*atan(By*phi_yr))+Svy;
+
+    F_total=sqrt((Nw*Fx_)^2+(F_yr^2));
+    F_max=0.7*m*g;
+    
+    
+    X_dot = u_*cos(h_)-v_*sin(h_);
+    U_dot = (-f*m*g+Nw*Fx_-F_yf*sin(delta_))/m+v_*r_;
+    Y_dot = u_*sin(h_)+v_*cos(h_);
+    V_dot = (F_yf*cos(delta_)+F_yr)/m-u_*r_;
+    H_dot = r_;
+    R_dot = (F_yf*a*cos(delta_)-F_yr*b)/Iz;
+    
+    x_dot = [X_dot;U_dot;Y_dot;V_dot;H_dot;R_dot];
+    
+    J_A = vpa(jacobian(x_dot, [x_ u_ y_ v_ h_ r_]),3);
+    J_B = vpa(jacobian(x_dot, [delta_ Fx_]),3);

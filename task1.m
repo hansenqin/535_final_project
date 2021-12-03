@@ -1,68 +1,144 @@
-clear
+close all 
+clear all
 
-%% setup
-load_constants
-load dh_fun.mat
-load TestTrack
-global num_itrs
+open('track.fig')
 
-options = optimoptions('fmincon', 'SpecifyConstraintGradient', true, ...
-                        'SpecifyObjectiveGradient', true);
-
-interp_const = 5;
-
-[Xmin, Xmax, goals] = get_track_bounds_and_goals(TestTrack, interp_const);
+tic
+load TestTrack.mat
+load traj_to_track_mapping.mat
+load Y
+load U
+toc
 
 
-num_itrs = 25;
-ub = [repmat([1000; 1000; 1000; 1000; 1000; 1000], num_itrs, 1);repmat([0.005; 5000], (num_itrs-1), 1)];
-lb = [repmat([-1000; -1000; -1000; -1000; -1000; -1000], num_itrs, 1);repmat([-0.005; -5000], (num_itrs-1), 1)];
+interp_const = 100;
+[bl_world_new, br_world_new, cline, heading] = get_track_bounds_and_goals(TestTrack, interp_const);
+
+Xobs = generateRandomObstacles(10,TestTrack);
+x0 = [287,5,-176,0,2,0];
+
+% traj_to_track_idx = zeros(1, length(Y));
+% tic
+% for i = 1:length(Y)
+%     curr_pos = [Y(i,1);Y(i,3)];
+%     traj_to_track_idx(i) = get_closest(curr_pos, cline);
+%     cline(:, traj_to_track_idx(i));
+% end
+% toc
+
+% obstacles = [];
+% for i=1:length(Xobs)
+%     obs = Xobs{i};
+%     obstacles(i) = plot(obs(:,1), obs(:,2));
+%     Y = modify_traj(Y, obs, bl_world_new, br_world_new, cline, heading, traj_to_track_mapping);
+% end
+% 
+% x0 = [287,5,-176,0,2,0];
+
+trajectory = scatter(x0(1), x0(3), '.');
 
 
-%% main loop
-x0 = zeros(1,6*num_itrs+2*(num_itrs-1));
-x0_ = [287,5,-176,0,2,0];
-x0(1,1:6*num_itrs) = repmat(x0_, 1,num_itrs);
-x0(1,6*num_itrs+1:end) = rand(1,2*(num_itrs-1));
-% x0(1,1:6) = [287,5,-176,0,2,0];
-for i = 1:length(goals.center)
-    curr_goal_x = goals.center(1, i);
-    curr_goal_y = goals.center(2, i);
-    curr_goal_h = goals.heading(i);
+
+num_Xobs_seen = 0;
+init = 1;
+Xobs_already_seen = {};
+obs = [];
+for i=1:length(Y)
     
-    cf = @(z) costfun(z, curr_goal_x, curr_goal_y, curr_goal_h);
-    nc = @(z) nonlcon(z, Xmin(i), Xmax(i), dhf, x0_);
-    z = fmincon(cf, x0, [], [], [], [], lb' ,ub' ,nc, options);
-    Y0 = reshape(z(1:6*num_itrs), 6, num_itrs)';
-    U = reshape(z(6*num_itrs+1:end),2,num_itrs-1);
-    x0 = Y0(end,:);
+    curr_pos = [Y(i,1);Y(i,3)];
+    Xobs_seen = senseObstacles(curr_pos, Xobs);
+    
+    
+    if init
+        num_Xobs_seen = length(Xobs_seen);
+        if num_Xobs_seen > 0
+            for j = 1:length(num_Xobs_seen)
+                obs = Xobs_seen{j};
+                Xobs_already_seen{end+1} = obs;
+                plot(obs(:,1), obs(:,2));
+                Y = modify_traj(Y, obs, bl_world_new, br_world_new, cline, heading, traj_to_track_mapping);
+            end
+        end
+        init = 0;
+    else
+        num_Xobs_seen = length(Xobs_seen);
+        if num_Xobs_seen > 0
+            latest_obs = Xobs_seen{end};
+            if ~any(cellfun(@(x) isequal(x, latest_obs), Xobs_already_seen))
+                disp('new obs detected')
+               plot(latest_obs(:,1), latest_obs(:,2));
+               Xobs_already_seen{end+1} = latest_obs;
+               Y = modify_traj(Y, latest_obs, bl_world_new, br_world_new, cline, heading, traj_to_track_mapping);
+            end
+        end
+        
+    end
+    
+    trajectory.XData(end+1) = Y(i,1);
+    trajectory.YData(end+1) = Y(i,3);
+    
+    
+    pause(0.0001)
+end
+
+
+
+function Y = modify_traj(Y, obs, bl_world_new, br_world_new, cline, heading, traj_to_track_mapping)
+    obs_center = mean(obs);
+    
+    closest_traj_idx = get_closest([Y(:,1) Y(:,3)]', obs_center');
+    closest_track_idx = get_closest(cline, obs_center');
+    leftside = get_obs_side(obs_center, cline, heading, closest_track_idx);
+    
+    curr_mapping = traj_to_track_mapping(closest_traj_idx-500:closest_traj_idx+500);
+    
+    if ~leftside
+        Y(closest_traj_idx-500:closest_traj_idx+500, 1) = (cline(1, curr_mapping) + 2*bl_world_new(1, curr_mapping))'/3;
+        Y(closest_traj_idx-500:closest_traj_idx+500, 3) = (cline(2, curr_mapping) + 2*bl_world_new(2, curr_mapping))'/3;
+    
+    else
+        Y(closest_traj_idx-500:closest_traj_idx+500, 1) = (cline(1, curr_mapping) + 2*br_world_new(1, curr_mapping))'/3;
+        Y(closest_traj_idx-500:closest_traj_idx+500, 3) = (cline(2, curr_mapping) + 2*br_world_new(2, curr_mapping))'/3;
+    
+    end
+    
+
+end
+
+function leftside = get_obs_side(obs_center, cline, heading, closest_track_idx)
+    rotated_obs_x = [rotmat(-(heading(closest_track_idx)-pi/2))*obs_center'];
+    rotated_obs_x = rotated_obs_x(1);
+    
+    rotated_cline_x = [rotmat(-(heading(closest_track_idx)-pi/2))*cline(:,closest_track_idx)];
+    rotated_cline_x = rotated_cline_x(1);
+    
+    leftside = rotated_obs_x < rotated_cline_x;
+    
+end
+
+
+function idx = get_closest(a, b)
+    [~,idx] = min(vecnorm(a-b));
+
 end
 
 
 
 
 
-%% define model equations
-
-    
-
-
-
-%% function defs
-
-function [Xmin, Xmax, goals] = get_track_bounds_and_goals(TestTrack, interp_const)
+function [bl_world_new, br_world_new, cline_new, track_heading_new] = get_track_bounds_and_goals(TestTrack, interp_const)
 %     This function takes the given bounds of the racing track and convert them
 %     to 
     
-    lb_world = TestTrack.bl;
-    ub_world = TestTrack.br;
+    bl_world = TestTrack.bl;
+    br_world = TestTrack.br;
     track_heading = TestTrack.theta;
     cline = TestTrack.cline;
     
-    lb_world_new(1, :) = interp1(1:1:length(lb_world(1, :)), lb_world(1, :), 1:1/interp_const:length(lb_world(1, :)));
-    lb_world_new(2, :) = interp1(1:1:length(lb_world(2, :)), lb_world(2, :), 1:1/interp_const:length(lb_world(2, :)));
-    ub_world_new(1, :) = interp1(1:1:length(ub_world(1, :)), ub_world(1, :), 1:1/interp_const:length(ub_world(1, :)));
-    ub_world_new(2, :) = interp1(1:1:length(ub_world(2, :)), ub_world(2, :), 1:1/interp_const:length(ub_world(2, :)));
+    bl_world_new(1, :) = interp1(1:1:length(bl_world(1, :)), bl_world(1, :), 1:1/interp_const:length(bl_world(1, :)));
+    bl_world_new(2, :) = interp1(1:1:length(bl_world(2, :)), bl_world(2, :), 1:1/interp_const:length(bl_world(2, :)));
+    br_world_new(1, :) = interp1(1:1:length(br_world(1, :)), br_world(1, :), 1:1/interp_const:length(br_world(1, :)));
+    br_world_new(2, :) = interp1(1:1:length(br_world(2, :)), br_world(2, :), 1:1/interp_const:length(br_world(2, :)));
     track_heading_new = interp1(1:1:length(track_heading), track_heading, 1:1/interp_const:length(track_heading));
     cline_new_x = interp1(1:1:length(cline), cline(1,:), 1:1/interp_const:length(cline));
     cline_new_y = interp1(1:1:length(cline), cline(2,:), 1:1/interp_const:length(cline));
@@ -70,207 +146,20 @@ function [Xmin, Xmax, goals] = get_track_bounds_and_goals(TestTrack, interp_cons
     
     
     
-    lb_car = rotmat(-track_heading_new)*reshape(lb_world_new, [], 1);
-    ub_car = rotmat(-track_heading_new)*reshape(ub_world_new, [], 1);
-    Xmin = reshape(lb_world_new, 2, []);
-    Xmin = Xmin(1,:);
-    
-    Xmax = reshape(ub_world_new, 2, []);
-    Xmax = Xmax(1,:);
+%     lb_car = rotmat(-track_heading_new)*reshape(lb_world_new, [], 1);
+%     ub_car = rotmat(-track_heading_new)*reshape(ub_world_new, [], 1);
+%     Xmin = reshape(lb_world_new, 2, []);
+%     Xmin = Xmin(1,:);
+%     
+%     Xmax = reshape(ub_world_new, 2, []);
+%     Xmax = Xmax(1,:);
     
     goals.center = cline_new;
     goals.heading = track_heading_new;
 end
 
 
-function [g,h, dg, dh]=nonlcon(z, lb_track, ub_track, dh_fun, x0)
-    global num_itrs
 
-
-    states = z(1:6*num_itrs);
-    x = states(1:6:6*num_itrs);
-    u = states(2:6:6*num_itrs);
-    y = states(3:6:6*num_itrs);
-    v = states(4:6:6*num_itrs);
-    phi = states(5:6:6*num_itrs);
-    r = states(6:6:6*num_itrs);
-   
-    inputs = z(6*num_itrs+1:end);
-    delta = inputs(1:2:end);
-    Fx = inputs(2:2:end);
-    
-    dx = zeros((num_itrs-1)*6,1);
-    h = zeros(6*num_itrs,1);
-    dg = zeros(2*num_itrs, 6*(num_itrs)+2*(num_itrs-1));
-    g = zeros(2*num_itrs,1);
-    dh = zeros(6*num_itrs, 6*(num_itrs)+2*(num_itrs-1));
-
-    %% inequality constraint g
-    idx = 1;
-    for i = 1:2:2*num_itrs
-        g(i) = x(idx)*cos(-phi(idx))-y(idx)*sin(-phi(idx))-ub_track;
-        g(i+1) = -(x(idx)*cos(-phi(idx))-y(idx)*sin(-phi(idx)))+lb_track;
-        idx = idx+1;
-    end
- 
-    %% jacobian of inequality constraint g, dg
-    idx = 1;
-    for i = 1:2:2*num_itrs
-        col_idx = (idx-1)*6+1:(idx-1)*6+6;
-        
-        dg(i, col_idx) = [ cos(phi(idx)), 0,  sin(phi(idx)), 0, y(idx)*cos(phi(idx)) - x(idx)*sin(phi(idx)), 0];
-        dg(i+1, col_idx) = [-cos(phi(idx)), 0, -sin(phi(idx)), 0, x(idx)*sin(phi(idx)) - y(idx)*cos(phi(idx)), 0];
-        idx = idx+1;
-    end
-    
-    
-    %% obtain dx
-    for i=1:num_itrs-1
-        row_idx = (i-1)*6+1:(i-1)*6+6;
-        dx(row_idx, 1) = bike([x(i) u(i) y(i) v(i) phi(i) r(i)], [delta(i), Fx(i)]);
-    end
-    
-    %% obtain equality constraint h
-    h(1:6,1) = [x(1)-x0(1); u(1)-x0(2); y(1)-x0(3); v(1)-x0(4); phi(1)-x0(5); r(1)-x0(6)];
-    for i=2:num_itrs
-        h((i-1)*6+1:(i-1)*6+6, 1) = [x(i) - x(i-1) - 0.02*dx((i-2)*6+1);
-                                     u(i) - u(i-1) - 0.02*dx((i-2)*6+2);
-                                     y(i) - y(i-1) - 0.02*dx((i-2)*6+3);
-                                     v(i) - v(i-1) - 0.02*dx((i-2)*6+4);
-                                     phi(i) - phi(i-1) - 0.02*dx((i-2)*6+5);
-                                     r(i) - r(i-1) - 0.02*dx((i-2)*6+6)];
-    end
-    
-   %% obtain dh
-    
-    dh = dh_fun(z);
-
-    dg = dg';
-    dh = dh';
-
-end
-
-function [J, dJ] = costfun(z, goal_x, goal_y, goal_h)
-
-    global num_itrs
-    
-    states = z(1:6*num_itrs);
-    inputs = z(6*num_itrs+1:end);
-    
-    
-    
-    x = states(1:6:6*num_itrs);
-    u = states(2:6:6*num_itrs);
-    y = states(3:6:6*num_itrs);
-    v = states(4:6:6*num_itrs);
-    phi = states(5:6:6*num_itrs);
-    r = states(6:6:6*num_itrs);
-    
-    delta = inputs(1:2:end);
-    Fx = inputs(2:2:end);
-    
-    
-    
-    J1 = 0;
-    for i=1:length(x)
-        J1 = J1 + (x(i)-goal_x)^2 + (y(i)-goal_y)^2 + (phi(i)-goal_h)^2 + v(i)^2;
-    end
-    
-    J2 = 0;
-    for i=1:length(delta)
-        J2 = J2 + (delta(i))^2 + (Fx(i))^2;
-    end
-    
-    J = J1+J2;
-    
-    
-    idx = 1;
-    for i=1:6:num_itrs*6
-        dJ(i) = 2*(x(idx)-goal_x);
-        dJ(i+1) = 0;
-        dJ(i+2) = 2*(y(idx)-goal_y);
-        dJ(i+3) = 2*v(idx);
-        dJ(i+4) = 2*(phi(idx)-goal_h);
-        dJ(i+5) = 0;
-        idx = idx+1;
-    end
-    
-    idx = 1;
-    for i=num_itrs*6+1:2:num_itrs*6+2*(num_itrs-1)
-        dJ(i) = 2*delta(idx);
-        dJ(i+1) = 2*Fx(idx);
-        idx = idx+1;
-    end
-    
-    dJ = dJ';
-% 
-%     dJ = [dJ zeros(1, 2*(num_itrs-1))];
-
-    
-end
-
-
-function dzdt=bike(X,U)
-%constants
-Nw=2;
-f=0.01;
-Iz=2667;
-a=1.35;
-b=1.45;
-By=0.27;
-Cy=1.2;
-Dy=0.7;
-Ey=-1.6;
-Shy=0;
-Svy=0;
-m=1400;
-g=9.806;
-
-
-x = X(1);
-u = X(2);
-y = X(3);
-v = X(4);
-h = X(5);
-r = X(6);
-
-
-%generate input functions
-delta_f=U(1);
-F_x=U(2);
-
-%slip angle functions in degrees
-a_f=rad2deg(delta_f-atan2(v+a*r,u));
-a_r=rad2deg(-atan2((v-b*r),u));
-
-%Nonlinear Tire Dynamics
-phi_yf=(1-Ey)*(a_f+Shy)+(Ey/By)*atan(By*(a_f+Shy));
-phi_yr=(1-Ey)*(a_r+Shy)+(Ey/By)*atan(By*(a_r+Shy));
-
-F_zf=b/(a+b)*m*g;
-F_yf=F_zf*Dy*sin(Cy*atan(By*phi_yf))+Svy;
-
-F_zr=a/(a+b)*m*g;
-F_yr=F_zr*Dy*sin(Cy*atan(By*phi_yr))+Svy;
-
-F_total=sqrt((Nw*F_x)^2+(F_yr^2));
-F_max=0.7*m*g;
-
-if F_total>F_max
-    
-    F_x=F_max/F_total*F_x;
-  
-    F_yr=F_max/F_total*F_yr;
-end
-
-%vehicle dynamics
-dzdt= [u*cos(h)-v*sin(h);...
-          (-f*m*g+Nw*F_x-F_yf*sin(delta_f))/m+v*r;...
-          u*sin(h)+v*cos(h);...
-          (F_yf*cos(delta_f)+F_yr)/m-u*r;...
-          r;...
-          (F_yf*a*cos(delta_f)-F_yr*b)/Iz];
-end
 
 function R = rotmat(h, sparse_flag)
 % Given an angle in radians h, produce the 2-by-2 rotation matrix R that
